@@ -33,7 +33,21 @@ When running multiple media streams (e.g., simultaneous sports broadcasts or vid
 nix-shell
 ```
 
-### 2. Inspect Windows and Audio Streams
+### 2. Launch Stream Windows
+
+Launch 3 stream windows and automatically start the focus daemon:
+
+```bash
+python stream_launcher.py -n 3 --start-daemon
+```
+
+Or specify exact stream URLs:
+
+```bash
+python stream_launcher.py https://stream1.example https://stream2.example --start-daemon
+```
+
+### 3. Inspect Windows and Audio Streams
 
 View currently detected Hyprland windows and PipeWire streams:
 
@@ -41,9 +55,9 @@ View currently detected Hyprland windows and PipeWire streams:
 python stream_silencer.py --status
 ```
 
-### 3. Run the Focus Daemon
+### 4. Run the Focus Daemon Standalone
 
-Launch the daemon to monitor focus switches continuously:
+Launch the daemon directly:
 
 ```bash
 python stream_silencer.py --daemon

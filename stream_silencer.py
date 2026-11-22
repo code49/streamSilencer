@@ -328,6 +328,22 @@ def main() -> None:
         help="Run continuously in the background listening to Hyprland focus events.",
     )
     parser.add_argument(
+        "--launch",
+        type=int,
+        metavar="COUNT",
+        help="Launch COUNT stream-compatible Firefox windows.",
+    )
+    parser.add_argument(
+        "--isolated",
+        action="store_true",
+        help="Use isolated instances with unique PIDs when launching windows.",
+    )
+    parser.add_argument(
+        "urls",
+        nargs="*",
+        help="Optional stream URLs to open when launching windows.",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         help="Evaluate current focus and update audio streams once, then exit.",
@@ -375,6 +391,16 @@ def main() -> None:
         mute_on_unfocus=args.mute_on_unfocus_all,
         dry_run=args.dry_run,
     )
+
+    if args.launch:
+        from stream_launcher import launch_windows
+        launch_windows(
+            count=args.launch,
+            urls=args.urls,
+            isolated=args.isolated,
+        )
+        if not args.daemon:
+            return
 
     if args.status:
         silencer.print_status()
