@@ -334,9 +334,9 @@ def main() -> None:
         help="Launch COUNT stream-compatible Firefox windows.",
     )
     parser.add_argument(
-        "--isolated",
+        "--shared-profile",
         action="store_true",
-        help="Use isolated instances with unique PIDs when launching windows.",
+        help="Use a single shared Firefox instance instead of isolated instances.",
     )
     parser.add_argument(
         "urls",
@@ -397,7 +397,7 @@ def main() -> None:
         launch_windows(
             count=args.launch,
             urls=args.urls,
-            isolated=args.isolated,
+            isolated=(not args.shared_profile),
         )
         if not args.daemon:
             return

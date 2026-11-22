@@ -65,6 +65,14 @@ def launch_windows(
             target_urls.append("about:blank")
 
     base_profile_dir = find_firefox_profile_dir(profile)
+    if not base_profile_dir:
+        base_profile_dir = os.path.expanduser(f"~/.mozilla/firefox/{profile}")
+        os.makedirs(base_profile_dir, exist_ok=True)
+        user_js = os.path.join(base_profile_dir, "user.js")
+        if not os.path.exists(user_js):
+            with open(user_js, "w", encoding="utf-8") as f:
+                f.write('user_pref("services.sync.engine.addons", false);\n')
+
     tmp_base = f"/tmp/{profile}_sessions"
 
     print(f"Launching {count} stream window(s)...")
@@ -78,20 +86,21 @@ def launch_windows(
             inst_dir = os.path.join(tmp_base, f"inst_{i + 1}")
             if os.path.exists(inst_dir):
                 shutil.rmtree(inst_dir)
+            os.makedirs(inst_dir, exist_ok=True)
             if base_profile_dir and os.path.exists(base_profile_dir):
                 # Copy core auth and preferences without bulky caches
-                os.makedirs(inst_dir, exist_ok=True)
-                for item in ["prefs.js", "logins.json", "key4.db", "cert9.db"]:
+                for item in ["prefs.js", "user.js", "logins.json", "key4.db", "cert9.db"]:
                     src = os.path.join(base_profile_dir, item)
                     if os.path.exists(src):
                         shutil.copy2(src, os.path.join(inst_dir, item))
-            else:
-                os.makedirs(inst_dir, exist_ok=True)
 
             cmd.extend(["--profile", inst_dir, "--new-instance", url])
         else:
-            # Standard single-instance multi-window mode
-            cmd.extend(["-P", profile, "-new-window", url])
+            # Use direct directory path to bypass profiles.ini
+            if i == 0:
+                cmd.extend(["--profile", base_profile_dir, url])
+            else:
+                cmd.extend(["--profile", base_profile_dir, "-new-window", url])
 
         print(f"  Window {i + 1}: {' '.join(cmd)}")
         subprocess.Popen(
@@ -128,9 +137,9 @@ def main() -> None:
         help="Firefox profile name to launch (default: 'streamSilencer').",
     )
     parser.add_argument(
-        "--isolated",
+        "--shared-profile",
         action="store_true",
-        help="Run each window in an isolated profile instance with a unique PID.",
+        help="Use a single shared Firefox instance instead of isolated instances.",
     )
     parser.add_argument(
         "--start-daemon",
@@ -146,7 +155,7 @@ def main() -> None:
         count=count,
         urls=args.urls,
         profile=args.profile,
-        isolated=args.isolated,
+        isolated=(not args.shared_profile),
     )
 
     if args.start_daemon:
