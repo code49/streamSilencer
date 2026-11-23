@@ -35,16 +35,24 @@ nix-shell
 
 ### 2. Launch Interactive Stream Session Manager
 
-Launch 2 stream windows (default) and enter the interactive controller:
+Start the session controller without opening windows upfront:
 
 ```bash
 python stream_launcher.py
 ```
 
-Launch 3 stream windows with specified URLs:
+Launch directly into a preset (e.g. 3x YouTube TV):
 
 ```bash
-python stream_launcher.py -n 3 https://stream1.example https://stream2.example
+python stream_launcher.py 4
+# or:
+python stream_launcher.py 3yttv
+```
+
+Launch with specific URLs:
+
+```bash
+python stream_launcher.py https://stream1.example https://stream2.example
 ```
 
 Configure the master profile (themes, extensions, logins):
@@ -53,14 +61,19 @@ Configure the master profile (themes, extensions, logins):
 python stream_launcher.py --edit
 ```
 
-### 3. Interactive Commands
+### 3. Interactive Commands & Presets
 
 Inside the `streamSilencer> ` command prompt:
 
 | Command | Description |
 | :--- | :--- |
-| `add [url]` (or paste URL) | Launch a new isolated stream window into the pool. |
-| `list` / `ls` | Display all active stream windows, titles, and audio mute states. |
+| `1` / `yt` | Open 1x YouTube window (`https://www.youtube.com`). |
+| `2` / `yttv` | Open 1x YouTube TV window (`https://tv.youtube.com`). |
+| `3` / `prime` | Open 1x Prime Video window (`https://www.primevideo.com`). |
+| `4` / `3yttv` | Open 3x YouTube TV windows (multiview). |
+| `add [url\|preset]` | Launch window with a custom URL or preset name (or paste URL directly). |
+| `presets` | Display all predefined streaming shortcuts. |
+| `list` / `ls` | Display all active stream windows, titles, PIDs, and audio mute states. |
 | `close <id>` / `rm <id>` | Terminate a specific stream window by ID. |
 | `focus <id>` | Switch Hyprland focus directly to that stream window. |
 | `reset` | Re-clone all active session instances fresh from master profile. |

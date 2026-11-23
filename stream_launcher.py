@@ -70,6 +70,46 @@ def duplicate_base_profile(base_dir: str, target_dir: str) -> None:
                 pass
 
 
+# Predefined streaming site presets
+PRESETS = {
+    "1": {
+        "name": "YouTube",
+        "description": "1x YouTube window",
+        "urls": ["https://www.youtube.com"],
+        "aliases": ["yt", "youtube"],
+    },
+    "2": {
+        "name": "YouTube TV",
+        "description": "1x YouTube TV window",
+        "urls": ["https://tv.youtube.com"],
+        "aliases": ["yttv", "youtubetv"],
+    },
+    "3": {
+        "name": "Prime Video",
+        "description": "1x Prime Video window",
+        "urls": ["https://www.primevideo.com"],
+        "aliases": ["prime", "primevideo"],
+    },
+    "4": {
+        "name": "3x YouTube TV",
+        "description": "3x YouTube TV windows (multiview)",
+        "urls": ["https://tv.youtube.com", "https://tv.youtube.com", "https://tv.youtube.com"],
+        "aliases": ["3yttv", "triple"],
+    },
+}
+
+
+def resolve_preset_urls(arg: str) -> Optional[List[str]]:
+    """Resolve a shortcut or preset name into a list of URLs."""
+    key = arg.strip().lower()
+    if key in PRESETS:
+        return PRESETS[key]["urls"]
+    for p in PRESETS.values():
+        if key in p["aliases"]:
+            return p["urls"]
+    return None
+
+
 def clear_hyprland_borders(class_name: str = "streamSilencer") -> None:
     """Reset Hyprland border overrides on all streamSilencer windows."""
     code = f"""
@@ -368,7 +408,12 @@ class StreamCLI(cmd.Cmd):
         "\n======================================================\n"
         " streamSilencer Session Controller                    \n"
         " Type 'help' or '?' for commands. Press Ctrl+C to quit\n"
-        "======================================================\n"
+        "======================================================\n\n"
+        "Quick Presets / Shortcuts:\n"
+        "  [1] or 'yt'     : 1x YouTube window\n"
+        "  [2] or 'yttv'   : 1x YouTube TV window\n"
+        "  [3] or 'prime'  : 1x Prime Video window\n"
+        "  [4] or '3yttv'  : 3x YouTube TV windows (multiview)\n"
     )
     prompt = "streamSilencer> "
 
@@ -377,16 +422,63 @@ class StreamCLI(cmd.Cmd):
         self.manager = manager
 
     def default(self, line: str) -> None:
-        """Allow direct pasting of URLs without typing 'add'."""
+        """Handle URL pasting and preset shortcuts directly."""
         line = line.strip()
+        preset_urls = resolve_preset_urls(line)
+        if preset_urls is not None:
+            print(f"Applying preset '{line}' ({len(preset_urls)} window(s))...")
+            for u in preset_urls:
+                self.manager.add_window(url=u)
+                time.sleep(0.3)
+            return
+
         if line.startswith("http://") or line.startswith("https://") or line.startswith("www."):
             self.do_add(line)
         else:
             print(f"Unknown command: '{line}'. Type 'help' or '?' for available commands.")
 
+    def do_preset(self, arg: str) -> None:
+        """preset <1-4|name>: Launch predefined streaming windows (e.g. 'preset 4' or 'preset yttv')."""
+        arg = arg.strip()
+        if not arg:
+            self.do_presets("")
+            return
+
+        urls = resolve_preset_urls(arg)
+        if urls is None:
+            print(f"Unknown preset: '{arg}'. Type 'presets' to list available shortcuts.")
+            return
+
+        print(f"Launching preset '{arg}' ({len(urls)} window(s))...")
+        for u in urls:
+            self.manager.add_window(url=u)
+            time.sleep(0.3)
+
+    def do_presets(self, arg: str) -> None:
+        """presets: Display list of predefined streaming site shortcuts."""
+        print("\nAvailable Presets:")
+        print("==================")
+        for k, p in sorted(PRESETS.items()):
+            aliases_str = ", ".join(f"'{a}'" for a in p["aliases"])
+            print(f"  [{k}] {p['name']:<16} : {p['description']:<36} (Aliases: {aliases_str})")
+        print("\nTip: Type '1', '2', '3', or '4' directly at the prompt to launch.\n")
+
     def do_add(self, arg: str) -> None:
-        """add [URL]: Launch a new isolated stream window (e.g. 'add https://youtube.com')."""
-        url = arg.strip() if arg.strip() else "about:blank"
+        """add [URL|preset]: Launch window with URL or preset name (e.g. 'add yttv' or 'add https://...')."""
+        arg = arg.strip()
+        if not arg:
+            self.manager.add_window(url="about:blank")
+            return
+
+        preset_urls = resolve_preset_urls(arg)
+        if preset_urls is not None:
+            print(f"Applying preset '{arg}' ({len(preset_urls)} window(s))...")
+            for u in preset_urls:
+                self.manager.add_window(url=u)
+                time.sleep(0.3)
+            return
+
+        url = arg
         if not url.startswith("http://") and not url.startswith("https://") and url != "about:blank":
             url = "https://" + url
         self.manager.add_window(url=url)
@@ -457,7 +549,12 @@ class StreamCLI(cmd.Cmd):
 
         print("\nDocumented commands:")
         print("====================")
-        print("  'add [url]'       : Launch a new isolated stream window (or paste a URL directly)")
+        print("  '1' / 'yt'        : Open 1x YouTube window")
+        print("  '2' / 'yttv'      : Open 1x YouTube TV window")
+        print("  '3' / 'prime'     : Open 1x Prime Video window")
+        print("  '4' / '3yttv'     : Open 3x YouTube TV windows (multiview)")
+        print("  'add [url|name]'  : Launch a new window (or paste a URL / preset name directly)")
+        print("  'presets'         : Display details of all streaming site presets")
         print("  'list' / 'ls'     : Display active stream windows, titles, PIDs, and audio mute states")
         print("  'close <id>'      : Terminate a specific stream window by ID (alias: 'rm')")
         print("  'focus <id>'      : Switch Hyprland focus directly to that stream window")
@@ -504,13 +601,13 @@ def main() -> None:
         "-n",
         "--count",
         type=int,
-        default=2,
-        help="Initial number of stream windows to open (default: 2).",
+        default=0,
+        help="Initial number of stream windows to open (default: 0).",
     )
     parser.add_argument(
         "urls",
         nargs="*",
-        help="Optional initial stream URLs to open.",
+        help="Optional initial stream URLs or preset shortcuts (e.g. '1', '4', 'yttv').",
     )
     parser.add_argument(
         "--profile",
@@ -558,10 +655,22 @@ def main() -> None:
     if not args.no_daemon:
         manager.start_focus_daemon()
 
-    # Launch initial windows
-    count = max(args.count, len(args.urls))
-    for i in range(count):
-        url = args.urls[i] if i < len(args.urls) else "about:blank"
+    # Expand any preset arguments from command line
+    target_urls: List[str] = []
+    for u in args.urls:
+        p_urls = resolve_preset_urls(u)
+        if p_urls is not None:
+            target_urls.extend(p_urls)
+        else:
+            target_urls.append(u)
+
+    # Pad with about:blank only if -n was explicitly specified higher than URL count
+    if args.count > len(target_urls):
+        while len(target_urls) < args.count:
+            target_urls.append("about:blank")
+
+    # Launch initial windows if requested
+    for url in target_urls:
         manager.add_window(url=url, reset=args.reset)
         time.sleep(0.3)
 
