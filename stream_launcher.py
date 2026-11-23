@@ -50,18 +50,18 @@ def find_firefox_profile_dir(profile_name: str) -> str:
 
 def duplicate_base_profile(base_dir: str, target_dir: str) -> None:
     """Duplicate base profile directly into an isolated runtime instance."""
-    exclude = {".parentlock", "lock"}
-    os.makedirs(target_dir, exist_ok=True)
-    for item in os.listdir(base_dir):
-        if item in exclude:
-            continue
-        s = os.path.join(base_dir, item)
-        d = os.path.join(target_dir, item)
-        if os.path.isdir(s):
-            shutil.copytree(s, d, dirs_exist_ok=True)
-        else:
+    ignore = shutil.ignore_patterns("*.marker", "*.lock", "lock", ".parentlock", "cache", "cache2", "startupCache")
+    if os.path.exists(target_dir):
+        try:
+            shutil.rmtree(target_dir)
+        except Exception:
+            pass
+    shutil.copytree(base_dir, target_dir, ignore=ignore)
+    for lk in [".parentlock", "lock"]:
+        p = os.path.join(target_dir, lk)
+        if os.path.exists(p):
             try:
-                shutil.copy2(s, d)
+                os.remove(p)
             except Exception:
                 pass
 
@@ -70,6 +70,7 @@ def launch_windows(
     count: int,
     urls: List[str],
     profile: str = "streamSilencer",
+    reset: bool = False,
 ) -> None:
     """Launch count windows, each duplicated directly from the master profile."""
     target_urls = []
@@ -86,14 +87,15 @@ def launch_windows(
     sessions_base = os.path.expanduser(f"~/.mozilla/firefox/{profile}_sessions")
     os.makedirs(sessions_base, exist_ok=True)
 
-    print(f"Duplicating '{profile}' and launching {count} stream window(s)...")
+    print(f"Launching {count} stream window(s) from '{profile}'...")
 
     for i in range(count):
         url = target_urls[i]
         inst_dir = os.path.join(sessions_base, f"inst_{i + 1}")
 
-        # Duplicate directly from the master streamSilencer profile
-        duplicate_base_profile(base_profile_dir, inst_dir)
+        # Duplicate from master profile if new or explicitly requested via --reset
+        if reset or not os.path.exists(inst_dir):
+            duplicate_base_profile(base_profile_dir, inst_dir)
 
         cmd = [
             "firefox",
@@ -152,6 +154,12 @@ def main() -> None:
         help="Open the master profile directly to configure themes, extensions, or logins.",
     )
     parser.add_argument(
+        "-r",
+        "--reset",
+        action="store_true",
+        help="Re-clone all runtime session instances fresh from the master profile.",
+    )
+    parser.add_argument(
         "--no-daemon",
         action="store_true",
         help="Do not start the streamSilencer background focus daemon.",
@@ -180,6 +188,7 @@ def main() -> None:
         count=count,
         urls=args.urls,
         profile=args.profile,
+        reset=args.reset,
     )
 
 
