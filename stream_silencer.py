@@ -147,11 +147,26 @@ def set_stream_mute(node_id: int, mute: bool, dry_run: bool = False) -> None:
         logger.error("Failed to %s node %d: %s", action, node_id, exc)
 
 
-def set_window_border(address: str, muted: bool, color: str = "rgb(ffadad)", dry_run: bool = False) -> None:
-    """Highlight a muted window border with red in Hyprland."""
+def set_border_animation_speed(speed: float = 2.0) -> None:
+    """Configure Hyprland border animation speed for snappy color transitions."""
+    code = f"hl.animation({{ leaf = 'border', enabled = true, speed = {speed}, bezier = 'borderChangeBezier' }})"
+    try:
+        subprocess.run(["hyprctl", "eval", code], capture_output=True, text=True)
+    except Exception as exc:
+        logger.debug("Failed to set border animation speed: %s", exc)
+
+
+def set_window_border(
+    address: str,
+    muted: bool,
+    color_muted: str = "rgb(ffadad)",
+    color_active: str = "rgb(caffbf)",
+    dry_run: bool = False,
+) -> None:
+    """Highlight window border red when muted or green when active."""
     if not address:
         return
-    val = color if muted else "-1"
+    val = color_muted if muted else color_active
     if dry_run:
         logger.info("[DRY-RUN] Set border for %s -> %s", address, val)
         return
@@ -183,6 +198,8 @@ class StreamSilencer:
         mute_on_unfocus: bool = False,
         highlight_muted: bool = True,
         border_color: str = "rgb(ffadad)",
+        focus_border_color: str = "rgb(caffbf)",
+        border_anim_speed: float = 2.0,
         dry_run: bool = False,
     ):
         self.class_filter = class_filter.lower()
@@ -190,6 +207,8 @@ class StreamSilencer:
         self.mute_on_unfocus = mute_on_unfocus
         self.highlight_muted = highlight_muted
         self.border_color = border_color
+        self.focus_border_color = focus_border_color
+        self.border_anim_speed = border_anim_speed
         self.dry_run = dry_run
         self.last_active_address: Optional[str] = None
         self.window_mute_states: Dict[str, bool] = {}
@@ -201,12 +220,30 @@ class StreamSilencer:
         if self.window_mute_states.get(address) == muted:
             return
         self.window_mute_states[address] = muted
-        set_window_border(address, muted=muted, color=self.border_color, dry_run=self.dry_run)
+        set_window_border(
+            address,
+            muted=muted,
+            color_muted=self.border_color,
+            color_active=self.focus_border_color,
+            dry_run=self.dry_run,
+        )
 
     def clear_all_borders(self) -> None:
         """Reset all managed window borders back to default."""
         for addr in list(self.window_mute_states.keys()):
-            set_window_border(addr, muted=False, dry_run=self.dry_run)
+            code = f"""
+            for _, w in ipairs(hl.get_windows()) do
+                if w.address == '{addr}' then
+                    hl.dispatch(hl.dsp.window.set_prop({{ window = w, prop = 'inactive_border_color', value = '-1' }}))
+                    hl.dispatch(hl.dsp.window.set_prop({{ window = w, prop = 'active_border_color', value = '-1' }}))
+                    break
+                end
+            end
+            """
+            try:
+                subprocess.run(["hyprctl", "eval", code], capture_output=True, text=True)
+            except Exception:
+                pass
         self.window_mute_states.clear()
 
     def window_matches(self, win: Dict) -> bool:
@@ -357,6 +394,10 @@ class StreamSilencer:
         socket_path = get_hyprland_socket_path()
         logger.info("Connecting to Hyprland socket2: %s", socket_path)
 
+        # Configure snappy border animation speed if requested
+        if self.border_anim_speed > 0:
+            set_border_animation_speed(self.border_anim_speed)
+
         # Initial synchronization
         self.update_states()
 
@@ -462,6 +503,17 @@ def main() -> None:
         help="Border color for muted windows (default: 'rgb(ffadad)').",
     )
     parser.add_argument(
+        "--focus-border-color",
+        default="rgb(caffbf)",
+        help="Border color for focused/unmuted stream windows (default: 'rgb(caffbf)').",
+    )
+    parser.add_argument(
+        "--border-anim-speed",
+        type=float,
+        default=2.0,
+        help="Hyprland border animation speed (lower is faster, default: 2.0).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Log actions without modifying PipeWire mute states.",
@@ -484,6 +536,8 @@ def main() -> None:
         mute_on_unfocus=args.mute_on_unfocus_all,
         highlight_muted=(not args.no_border_highlight),
         border_color=args.border_color,
+        focus_border_color=args.focus_border_color,
+        border_anim_speed=args.border_anim_speed,
         dry_run=args.dry_run,
     )
 
