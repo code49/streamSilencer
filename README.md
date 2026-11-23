@@ -33,31 +33,52 @@ When running multiple media streams (e.g., simultaneous sports broadcasts or vid
 nix-shell
 ```
 
-### 2. Launch Stream Windows
+### 2. Launch Interactive Stream Session Manager
 
-Launch 3 stream windows and automatically start the focus daemon:
-
-```bash
-python stream_launcher.py -n 3 --start-daemon
-```
-
-Or specify exact stream URLs:
+Launch 2 stream windows (default) and enter the interactive controller:
 
 ```bash
-python stream_launcher.py https://stream1.example https://stream2.example --start-daemon
+python stream_launcher.py
 ```
 
-### 3. Inspect Windows and Audio Streams
+Launch 3 stream windows with specified URLs:
 
-View currently detected Hyprland windows and PipeWire streams:
+```bash
+python stream_launcher.py -n 3 https://stream1.example https://stream2.example
+```
+
+Configure the master profile (themes, extensions, logins):
+
+```bash
+python stream_launcher.py --edit
+```
+
+### 3. Interactive Commands
+
+Inside the `streamSilencer> ` command prompt:
+
+| Command | Description |
+| :--- | :--- |
+| `add [url]` (or paste URL) | Launch a new isolated stream window into the pool. |
+| `list` / `ls` | Display all active stream windows, titles, and audio mute states. |
+| `close <id>` / `rm <id>` | Terminate a specific stream window by ID. |
+| `focus <id>` | Switch Hyprland focus directly to that stream window. |
+| `reset` | Re-clone all active session instances fresh from master profile. |
+| `edit` | Open master profile to adjust extensions, themes, or logins. |
+| `clear` | Clear the terminal screen. |
+| `quit` / `exit` (or `Ctrl+C`) | Cleanly close all stream windows, stop the daemon, and exit. |
+
+### 4. Inspect Windows and Audio Streams
+
+View currently detected Hyprland windows and PipeWire streams directly:
 
 ```bash
 python stream_silencer.py --status
 ```
 
-### 4. Run the Focus Daemon Standalone
+### 5. Run the Focus Daemon Standalone
 
-Launch the daemon directly:
+Launch the daemon independently:
 
 ```bash
 python stream_silencer.py --daemon
