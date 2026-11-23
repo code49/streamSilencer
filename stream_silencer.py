@@ -151,7 +151,7 @@ class StreamSilencer:
 
     def __init__(
         self,
-        class_filter: str = "firefox",
+        class_filter: str = "streamSilencer",
         title_filter: str = "",
         mute_on_unfocus: bool = False,
         dry_run: bool = False,
@@ -355,8 +355,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--class-filter",
-        default="firefox",
-        help="Target window class name (default: 'firefox').",
+        default="streamSilencer",
+        help="Target window class name (default: 'streamSilencer').",
     )
     parser.add_argument(
         "--title-filter",
