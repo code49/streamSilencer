@@ -49,6 +49,52 @@ def find_firefox_profile_dir(profile_name: str) -> str:
     return ""
 
 
+def sync_theme_and_extensions(sessions_base: str, count: int) -> None:
+    """Propagate active theme and installed extensions from inst_1 to all other instances."""
+    inst_1 = os.path.join(sessions_base, "inst_1")
+    if not os.path.exists(inst_1):
+        return
+
+    active_theme = None
+    inst_1_prefs = os.path.join(inst_1, "prefs.js")
+    if os.path.exists(inst_1_prefs):
+        with open(inst_1_prefs, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if "extensions.activeThemeID" in line:
+                    active_theme = line.strip()
+                    break
+
+    for i in range(1, count):
+        target_inst = os.path.join(sessions_base, f"inst_{i + 1}")
+        if not os.path.exists(target_inst):
+            continue
+
+        if active_theme:
+            user_js = os.path.join(target_inst, "user.js")
+            lines = []
+            if os.path.exists(user_js):
+                try:
+                    os.chmod(user_js, 0o644)
+                    with open(user_js, "r", encoding="utf-8", errors="ignore") as f:
+                        lines = [l for l in f if "extensions.activeThemeID" not in l]
+                except Exception:
+                    pass
+            lines.append(f"{active_theme}\n")
+            try:
+                with open(user_js, "w", encoding="utf-8") as f:
+                    f.writelines(lines)
+            except Exception:
+                pass
+
+        src_ext = os.path.join(inst_1, "extensions")
+        dst_ext = os.path.join(target_inst, "extensions")
+        if os.path.exists(src_ext) and not os.path.exists(dst_ext):
+            try:
+                shutil.copytree(src_ext, dst_ext, dirs_exist_ok=True)
+            except Exception:
+                pass
+
+
 def launch_windows(
     count: int,
     urls: List[str],
@@ -78,6 +124,9 @@ def launch_windows(
     os.makedirs(sessions_base, exist_ok=True)
 
     print(f"Launching {count} stream window(s)...")
+
+    if isolated:
+        sync_theme_and_extensions(sessions_base, count)
 
     for i in range(count):
         url = target_urls[i]
