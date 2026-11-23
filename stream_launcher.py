@@ -108,6 +108,30 @@ def launch_windows(
                     except Exception:
                         pass
 
+                # Copy Widevine and media plugins for DRM (YouTube TV, sports streams)
+                for gmp in ["gmp", "gmp-gmpopenh264", "gmp-widevinecdm"]:
+                    src_gmp = os.path.join(base_profile_dir, gmp)
+                    if not os.path.exists(src_gmp):
+                        fallback_gmp = os.path.expanduser(f"~/.mozilla/firefox/dchan-personal/{gmp}")
+                        if os.path.exists(fallback_gmp):
+                            src_gmp = fallback_gmp
+                    dst_gmp = os.path.join(inst_dir, gmp)
+                    if os.path.exists(src_gmp) and not os.path.exists(dst_gmp):
+                        try:
+                            shutil.copytree(src_gmp, dst_gmp)
+                        except Exception:
+                            pass
+
+                # Ensure EME / Widevine preferences are set in instance user.js
+                inst_user_js = os.path.join(inst_dir, "user.js")
+                if os.path.exists(inst_user_js):
+                    try:
+                        os.chmod(inst_user_js, 0o644)
+                        with open(inst_user_js, "a", encoding="utf-8") as f:
+                            f.write('\nuser_pref("media.eme.enabled", true);\nuser_pref("media.gmp-widevinecdm.enabled", true);\nuser_pref("media.gmp-widevinecdm.visible", true);\n')
+                    except Exception:
+                        pass
+
             cmd.extend(["--profile", inst_dir, "--new-instance", url])
         else:
             # Use direct directory path to bypass profiles.ini
