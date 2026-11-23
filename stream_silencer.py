@@ -11,6 +11,7 @@ import argparse
 import json
 import logging
 import os
+import select
 import signal
 import socket
 import subprocess
@@ -298,6 +299,12 @@ class StreamSilencer:
         logger.info("Daemon active. Waiting for Hyprland focus events...")
         buffer = ""
         while True:
+            # Poll with a 1-second timeout to catch newly started audio streams
+            readable, _, _ = select.select([sock], [], [], 1.0)
+            if not readable:
+                self.update_states()
+                continue
+
             chunk = sock.recv(4096).decode("utf-8", errors="replace")
             if not chunk:
                 logger.warning("Hyprland socket disconnected.")

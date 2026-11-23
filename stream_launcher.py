@@ -88,11 +88,22 @@ def launch_windows(
                 shutil.rmtree(inst_dir)
             os.makedirs(inst_dir, exist_ok=True)
             if base_profile_dir and os.path.exists(base_profile_dir):
-                # Copy core auth and preferences without bulky caches
-                for item in ["prefs.js", "user.js", "logins.json", "key4.db", "cert9.db"]:
+                # Copy core auth, cookies, and preferences
+                for item in [
+                    "prefs.js", "user.js", "cookies.sqlite", "cookies.sqlite-wal",
+                    "logins.json", "logins.db", "key4.db", "cert9.db", "storage.sqlite"
+                ]:
                     src = os.path.join(base_profile_dir, item)
                     if os.path.exists(src):
                         shutil.copy2(src, os.path.join(inst_dir, item))
+                # Copy storage directory for local web sessions
+                src_storage = os.path.join(base_profile_dir, "storage")
+                dst_storage = os.path.join(inst_dir, "storage")
+                if os.path.exists(src_storage) and not os.path.exists(dst_storage):
+                    try:
+                        shutil.copytree(src_storage, dst_storage)
+                    except Exception:
+                        pass
 
             cmd.extend(["--profile", inst_dir, "--new-instance", url])
         else:
@@ -142,12 +153,24 @@ def main() -> None:
         help="Use a single shared Firefox instance instead of isolated instances.",
     )
     parser.add_argument(
-        "--start-daemon",
+        "--no-daemon",
         action="store_true",
-        help="Also launch the streamSilencer background focus daemon.",
+        help="Do not start the streamSilencer background focus daemon.",
     )
 
     args = parser.parse_args()
+
+    # Automatically manage focus daemon unless opted out
+    if not args.no_daemon:
+        subprocess.run(["pkill", "-f", "stream_silencer.py --daemon"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        daemon_script = os.path.join(os.path.dirname(__file__), "stream_silencer.py")
+        print("Starting streamSilencer focus daemon...")
+        subprocess.Popen(
+            [sys.executable, daemon_script, "--daemon"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
 
     # Determine window count
     count = max(args.count, len(args.urls))
@@ -157,16 +180,6 @@ def main() -> None:
         profile=args.profile,
         isolated=(not args.shared_profile),
     )
-
-    if args.start_daemon:
-        daemon_script = os.path.join(os.path.dirname(__file__), "stream_silencer.py")
-        print("Starting streamSilencer daemon...")
-        subprocess.Popen(
-            [sys.executable, daemon_script, "--daemon"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
 
 
 if __name__ == "__main__":
