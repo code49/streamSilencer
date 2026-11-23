@@ -67,14 +67,14 @@ Inside the `streamSilencer> ` command prompt:
 
 | Command | Description |
 | :--- | :--- |
-| `1` / `yt` | Open 1x YouTube window (`https://www.youtube.com`). |
+| `1` / `yt` | Open 1x YouTube window (`https://www.youtube.com`). Supports chaining: `1 1`, `1 2`. |
 | `2` / `yttv` | Open 1x YouTube TV window (`https://tv.youtube.com`). |
 | `3` / `prime` | Open 1x Prime Video window (`https://www.primevideo.com`). |
 | `4` / `3yttv` | Open 3x YouTube TV windows (multiview). |
-| `add [url\|preset]` | Launch window with a custom URL or preset name (or paste URL directly). |
+| `add [urls\|presets...]` | Launch window(s) with custom URLs or preset names (e.g. `add 1 1`, `add yt prime`). |
 | `presets` | Display all predefined streaming shortcuts. |
 | `list` / `ls` | Display all active stream windows, titles, PIDs, and audio mute states. |
-| `close <id>` / `rm <id>` | Terminate a specific stream window by ID. |
+| `close <ids...>` / `rm <ids...>` | Terminate one or more stream windows by ID (e.g. `close 1 2`). |
 | `focus <id>` | Switch Hyprland focus directly to that stream window. |
 | `reset` | Re-clone all active session instances fresh from master profile. |
 | `sync` | Sync latest logins and cookies from your personal Firefox profile. |

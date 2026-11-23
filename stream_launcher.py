@@ -454,35 +454,51 @@ class StreamCLI(cmd.Cmd):
         self.manager = manager
 
     def default(self, line: str) -> None:
-        """Handle URL pasting and preset shortcuts directly."""
-        line = line.strip()
-        preset_urls = resolve_preset_urls(line)
-        if preset_urls is not None:
-            print(f"Applying preset '{line}' ({len(preset_urls)} window(s))...")
-            for u in preset_urls:
+        """Handle multi-argument shortcuts (e.g. '1 1' or 'yt prime') and direct URLs."""
+        tokens = line.strip().split()
+        if not tokens:
+            return
+
+        # Check if all tokens can be interpreted as presets, shortcuts, or URLs
+        target_urls = []
+        all_resolved = True
+        for t in tokens:
+            p_urls = resolve_preset_urls(t)
+            if p_urls is not None:
+                target_urls.extend(p_urls)
+            elif t.startswith("http://") or t.startswith("https://") or t.startswith("www."):
+                url = t if (t.startswith("http://") or t.startswith("https://")) else "https://" + t
+                target_urls.append(url)
+            else:
+                all_resolved = False
+                break
+
+        if all_resolved and target_urls:
+            print(f"Launching {len(target_urls)} stream window(s)...")
+            for u in target_urls:
                 self.manager.add_window(url=u)
                 time.sleep(0.3)
             return
 
-        if line.startswith("http://") or line.startswith("https://") or line.startswith("www."):
-            self.do_add(line)
-        else:
-            print(f"Unknown command: '{line}'. Type 'help' or '?' for available commands.")
+        print(f"Unknown command: '{line}'. Type 'help' or '?' for available commands.")
 
     def do_preset(self, arg: str) -> None:
-        """preset <1-4|name>: Launch predefined streaming windows (e.g. 'preset 4' or 'preset yttv')."""
-        arg = arg.strip()
-        if not arg:
+        """preset <1-4|name ...>: Launch predefined streaming windows (e.g. 'preset 4' or 'preset 1 1')."""
+        tokens = arg.strip().split()
+        if not tokens:
             self.do_presets("")
             return
 
-        urls = resolve_preset_urls(arg)
-        if urls is None:
-            print(f"Unknown preset: '{arg}'. Type 'presets' to list available shortcuts.")
-            return
+        target_urls = []
+        for t in tokens:
+            p_urls = resolve_preset_urls(t)
+            if p_urls is None:
+                print(f"Unknown preset: '{t}'. Type 'presets' to list available shortcuts.")
+                return
+            target_urls.extend(p_urls)
 
-        print(f"Launching preset '{arg}' ({len(urls)} window(s))...")
-        for u in urls:
+        print(f"Launching preset(s) ({len(target_urls)} window(s))...")
+        for u in target_urls:
             self.manager.add_window(url=u)
             time.sleep(0.3)
 
@@ -493,27 +509,31 @@ class StreamCLI(cmd.Cmd):
         for k, p in sorted(PRESETS.items()):
             aliases_str = ", ".join(f"'{a}'" for a in p["aliases"])
             print(f"  [{k}] {p['name']:<16} : {p['description']:<36} (Aliases: {aliases_str})")
-        print("\nTip: Type '1', '2', '3', or '4' directly at the prompt to launch.\n")
+        print("\nTip: Type '1', '2', '3', or '4' directly (or chain them like '1 1' or '1 2') to launch.\n")
 
     def do_add(self, arg: str) -> None:
-        """add [URL|preset]: Launch window with URL or preset name (e.g. 'add yttv' or 'add https://...')."""
-        arg = arg.strip()
-        if not arg:
+        """add [URL|preset ...]: Launch window(s) with URL or preset name (e.g. 'add 1 1' or 'add yttv prime')."""
+        tokens = arg.strip().split()
+        if not tokens:
             self.manager.add_window(url="about:blank")
             return
 
-        preset_urls = resolve_preset_urls(arg)
-        if preset_urls is not None:
-            print(f"Applying preset '{arg}' ({len(preset_urls)} window(s))...")
-            for u in preset_urls:
-                self.manager.add_window(url=u)
-                time.sleep(0.3)
-            return
+        target_urls = []
+        for t in tokens:
+            preset_urls = resolve_preset_urls(t)
+            if preset_urls is not None:
+                target_urls.extend(preset_urls)
+            elif t.startswith("http://") or t.startswith("https://") or t == "about:blank":
+                target_urls.append(t)
+            elif "." in t or t.startswith("www."):
+                target_urls.append("https://" + t if not t.startswith("http") else t)
+            else:
+                target_urls.append("https://" + t)
 
-        url = arg
-        if not url.startswith("http://") and not url.startswith("https://") and url != "about:blank":
-            url = "https://" + url
-        self.manager.add_window(url=url)
+        print(f"Adding {len(target_urls)} stream window(s)...")
+        for u in target_urls:
+            self.manager.add_window(url=u)
+            time.sleep(0.3)
 
     def do_list(self, arg: str) -> None:
         """list: Display all active stream windows, titles, and audio mute states."""
@@ -528,19 +548,21 @@ class StreamCLI(cmd.Cmd):
         self.do_list(arg)
 
     def do_close(self, arg: str) -> None:
-        """close <ID>: Terminate an active stream window by ID (e.g. 'close 2')."""
-        arg = arg.strip()
-        if not arg:
-            print("Usage: close <ID>")
+        """close <ID ...>: Terminate one or more active stream windows by ID (e.g. 'close 1' or 'close 1 2')."""
+        tokens = arg.strip().split()
+        if not tokens:
+            print("Usage: close <ID> [ID ...]")
             return
-        try:
-            inst_id = int(arg)
-            self.manager.close_window(inst_id)
-        except ValueError:
-            print(f"Invalid window ID: '{arg}'. Must be an integer.")
+
+        for t in tokens:
+            try:
+                inst_id = int(t)
+                self.manager.close_window(inst_id)
+            except ValueError:
+                print(f"Invalid window ID: '{t}'. Must be an integer.")
 
     def do_rm(self, arg: str) -> None:
-        """rm <ID>: Alias for 'close'."""
+        """rm <ID ...>: Alias for 'close'."""
         self.do_close(arg)
 
     def do_focus(self, arg: str) -> None:
@@ -585,21 +607,21 @@ class StreamCLI(cmd.Cmd):
 
         print("\nDocumented commands:")
         print("====================")
-        print("  '1' / 'yt'        : Open 1x YouTube window")
-        print("  '2' / 'yttv'      : Open 1x YouTube TV window")
-        print("  '3' / 'prime'     : Open 1x Prime Video window")
-        print("  '4' / '3yttv'     : Open 3x YouTube TV windows (multiview)")
-        print("  'add [url|name]'  : Launch a new window (or paste a URL / preset name directly)")
-        print("  'presets'         : Display details of all streaming site presets")
-        print("  'list' / 'ls'     : Display active stream windows, titles, PIDs, and audio mute states")
-        print("  'close <id>'      : Terminate a specific stream window by ID (alias: 'rm')")
-        print("  'focus <id>'      : Switch Hyprland focus directly to that stream window")
-        print("  'reset'           : Re-clone all active session instances fresh from the master profile")
-        print("  'sync'            : Sync latest cookies and logins from your personal Firefox profile")
-        print("  'edit'            : Open master profile directly to configure themes, logins, or extensions")
-        print("  'clear'           : Clear the terminal screen")
-        print("  'help' / '?'      : Show this command reference")
-        print("  'quit' / 'exit'   : Terminate all windows, stop focus daemon, and exit (alias: 'q')\n")
+        print("  '1' / 'yt'            : Open 1x YouTube window (supports chaining: '1 1', '1 2')")
+        print("  '2' / 'yttv'          : Open 1x YouTube TV window")
+        print("  '3' / 'prime'         : Open 1x Prime Video window")
+        print("  '4' / '3yttv'         : Open 3x YouTube TV windows (multiview)")
+        print("  'add [url|preset ...]' : Launch window(s) with URLs or presets (e.g. 'add yt prime')")
+        print("  'presets'             : Display details of all streaming site presets")
+        print("  'list' / 'ls'         : Display active stream windows, titles, PIDs, and audio mute states")
+        print("  'close <id ...>'      : Terminate stream window(s) by ID (e.g. 'close 1 2', alias: 'rm')")
+        print("  'focus <id>'          : Switch Hyprland focus directly to that stream window")
+        print("  'reset'               : Re-clone all active session instances fresh from the master profile")
+        print("  'sync'                : Sync latest cookies and logins from your personal Firefox profile")
+        print("  'edit'                : Open master profile directly to configure themes, logins, or extensions")
+        print("  'clear'               : Clear the terminal screen")
+        print("  'help' / '?'          : Show this command reference")
+        print("  'quit' / 'exit'       : Terminate all windows, stop focus daemon, and exit (alias: 'q')\n")
 
     def do_quit(self, arg: str) -> bool:
         """quit: Close all stream windows, stop the focus daemon, and exit."""
