@@ -77,6 +77,7 @@ Inside the `streamSilencer> ` command prompt:
 | `close <id>` / `rm <id>` | Terminate a specific stream window by ID. |
 | `focus <id>` | Switch Hyprland focus directly to that stream window. |
 | `reset` | Re-clone all active session instances fresh from master profile. |
+| `sync` | Sync latest logins and cookies from your personal Firefox profile. |
 | `edit` | Open master profile to adjust extensions, themes, or logins. |
 | `clear` | Clear the terminal screen. |
 | `quit` / `exit` (or `Ctrl+C`) | Cleanly close all stream windows, stop the daemon, and exit. |

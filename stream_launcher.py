@@ -177,9 +177,9 @@ class StreamSessionManager:
             inst_id += 1
 
         inst_dir = os.path.join(self.sessions_base, f"inst_{inst_id}")
-        if reset or not os.path.exists(inst_dir):
-            print(f"Duplicating profile for window #{inst_id}...")
-            duplicate_base_profile(self.base_profile_dir, inst_dir)
+        # Always clone fresh from master profile to ensure identical logins and cookies
+        print(f"Duplicating fresh profile for window #{inst_id}...")
+        duplicate_base_profile(self.base_profile_dir, inst_dir)
 
         # Clear stale locks
         for lk in [".parentlock", "lock"]:
@@ -358,6 +358,29 @@ class StreamSessionManager:
             self.add_window(url=url, reset=True)
         print("All session profiles reset and re-launched.")
 
+    def sync_credentials(self, source_profile: str = "dchan-personal") -> None:
+        """Sync latest login cookies, passwords, and storage from personal profile."""
+        src_dir = find_firefox_profile_dir(source_profile)
+        if not os.path.exists(src_dir):
+            print(f"Source profile '{source_profile}' not found.")
+            return
+
+        print(f"Syncing authentication and cookies from '{source_profile}'...")
+        for f in ["cookies.sqlite", "cookies.sqlite-wal", "logins.json", "logins.db", "key4.db", "cert9.db"]:
+            sp = os.path.join(src_dir, f)
+            dp = os.path.join(self.base_profile_dir, f)
+            if os.path.exists(sp):
+                shutil.copy2(sp, dp)
+
+        storage_src = os.path.join(src_dir, "storage")
+        storage_dst = os.path.join(self.base_profile_dir, "storage")
+        if os.path.exists(storage_src):
+            if os.path.exists(storage_dst):
+                shutil.rmtree(storage_dst)
+            shutil.copytree(storage_src, storage_dst, ignore=shutil.ignore_patterns("*.lock", ".parentlock"))
+
+        print("Authentication credentials synced to master profile.")
+
     def shutdown(self) -> None:
         """Cleanly terminate all windows, stop daemon, and restore Hyprland borders."""
         if self.shutting_down:
@@ -527,6 +550,10 @@ class StreamCLI(cmd.Cmd):
         """reset: Re-clone all active stream windows from the master profile."""
         self.manager.reset_all_sessions()
 
+    def do_sync(self, arg: str) -> None:
+        """sync: Synchronize latest cookies and logins from your personal Firefox profile."""
+        self.manager.sync_credentials()
+
     def do_edit(self, arg: str) -> None:
         """edit: Open the master profile in Firefox to configure themes, logins, or extensions."""
         base_dir = self.manager.base_profile_dir
@@ -559,6 +586,7 @@ class StreamCLI(cmd.Cmd):
         print("  'close <id>'      : Terminate a specific stream window by ID (alias: 'rm')")
         print("  'focus <id>'      : Switch Hyprland focus directly to that stream window")
         print("  'reset'           : Re-clone all active session instances fresh from the master profile")
+        print("  'sync'            : Sync latest cookies and logins from your personal Firefox profile")
         print("  'edit'            : Open master profile directly to configure themes, logins, or extensions")
         print("  'clear'           : Clear the terminal screen")
         print("  'help' / '?'      : Show this command reference")
