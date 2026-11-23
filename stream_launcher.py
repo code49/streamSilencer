@@ -449,6 +449,24 @@ class StreamCLI(cmd.Cmd):
         """clear: Clear the terminal screen."""
         os.system("clear")
 
+    def do_help(self, arg: str) -> None:
+        """help [command]: Display command reference in vertical list format."""
+        if arg.strip():
+            super().do_help(arg.strip())
+            return
+
+        print("\nDocumented commands:")
+        print("====================")
+        print("  'add [url]'       : Launch a new isolated stream window (or paste a URL directly)")
+        print("  'list' / 'ls'     : Display active stream windows, titles, PIDs, and audio mute states")
+        print("  'close <id>'      : Terminate a specific stream window by ID (alias: 'rm')")
+        print("  'focus <id>'      : Switch Hyprland focus directly to that stream window")
+        print("  'reset'           : Re-clone all active session instances fresh from the master profile")
+        print("  'edit'            : Open master profile directly to configure themes, logins, or extensions")
+        print("  'clear'           : Clear the terminal screen")
+        print("  'help' / '?'      : Show this command reference")
+        print("  'quit' / 'exit'   : Terminate all windows, stop focus daemon, and exit (alias: 'q')\n")
+
     def do_quit(self, arg: str) -> bool:
         """quit: Close all stream windows, stop the focus daemon, and exit."""
         return True
