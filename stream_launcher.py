@@ -54,6 +54,7 @@ def launch_windows(
     urls: List[str],
     profile: str = "streamSilencer",
     isolated: bool = False,
+    reset_sessions: bool = False,
 ) -> None:
     """Launch count windows with the streamSilencer profile."""
     # Ensure default URL if not provided
@@ -73,7 +74,8 @@ def launch_windows(
             with open(user_js, "w", encoding="utf-8") as f:
                 f.write('user_pref("services.sync.engine.addons", false);\n')
 
-    tmp_base = f"/tmp/{profile}_sessions"
+    sessions_base = os.path.expanduser(f"~/.mozilla/firefox/{profile}_sessions")
+    os.makedirs(sessions_base, exist_ok=True)
 
     print(f"Launching {count} stream window(s)...")
 
@@ -82,13 +84,14 @@ def launch_windows(
         cmd = ["firefox", "--name", profile]
 
         if isolated:
-            # Create a dedicated profile copy to guarantee separate PIDs for PipeWire
-            inst_dir = os.path.join(tmp_base, f"inst_{i + 1}")
-            if os.path.exists(inst_dir):
+            # Dedicated persistent session instance to guarantee separate PIDs for PipeWire
+            inst_dir = os.path.join(sessions_base, f"inst_{i + 1}")
+            if reset_sessions and os.path.exists(inst_dir):
                 shutil.rmtree(inst_dir)
+            is_new = not os.path.exists(inst_dir)
             os.makedirs(inst_dir, exist_ok=True)
-            if base_profile_dir and os.path.exists(base_profile_dir):
-                # Copy core auth, cookies, and preferences
+            if is_new and base_profile_dir and os.path.exists(base_profile_dir):
+                # Initial seed of core auth, cookies, and preferences
                 for item in [
                     "prefs.js", "user.js", "cookies.sqlite", "cookies.sqlite-wal",
                     "logins.json", "logins.db", "key4.db", "cert9.db", "storage.sqlite"
@@ -153,6 +156,11 @@ def main() -> None:
         help="Use a single shared Firefox instance instead of isolated instances.",
     )
     parser.add_argument(
+        "--reset-sessions",
+        action="store_true",
+        help="Clear existing session profile data and re-seed from base profile.",
+    )
+    parser.add_argument(
         "--no-daemon",
         action="store_true",
         help="Do not start the streamSilencer background focus daemon.",
@@ -179,6 +187,7 @@ def main() -> None:
         urls=args.urls,
         profile=args.profile,
         isolated=(not args.shared_profile),
+        reset_sessions=args.reset_sessions,
     )
 
 
