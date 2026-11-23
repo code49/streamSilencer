@@ -358,28 +358,37 @@ class StreamSessionManager:
             self.add_window(url=url, reset=True)
         print("All session profiles reset and re-launched.")
 
-    def sync_credentials(self, source_profile: str = "dchan-personal") -> None:
+    def sync_credentials(self, source_profile: str = "dchan-personal", silent: bool = False) -> None:
         """Sync latest login cookies, passwords, and storage from personal profile."""
         src_dir = find_firefox_profile_dir(source_profile)
         if not os.path.exists(src_dir):
-            print(f"Source profile '{source_profile}' not found.")
+            if not silent:
+                print(f"Source profile '{source_profile}' not found.")
             return
 
-        print(f"Syncing authentication and cookies from '{source_profile}'...")
+        if not silent:
+            print(f"Syncing authentication and cookies from '{source_profile}'...")
         for f in ["cookies.sqlite", "cookies.sqlite-wal", "logins.json", "logins.db", "key4.db", "cert9.db"]:
             sp = os.path.join(src_dir, f)
             dp = os.path.join(self.base_profile_dir, f)
             if os.path.exists(sp):
-                shutil.copy2(sp, dp)
+                try:
+                    shutil.copy2(sp, dp)
+                except Exception:
+                    pass
 
         storage_src = os.path.join(src_dir, "storage")
         storage_dst = os.path.join(self.base_profile_dir, "storage")
         if os.path.exists(storage_src):
-            if os.path.exists(storage_dst):
-                shutil.rmtree(storage_dst)
-            shutil.copytree(storage_src, storage_dst, ignore=shutil.ignore_patterns("*.lock", ".parentlock"))
+            try:
+                if os.path.exists(storage_dst):
+                    shutil.rmtree(storage_dst)
+                shutil.copytree(storage_src, storage_dst, ignore=shutil.ignore_patterns("*.lock", ".parentlock"))
+            except Exception:
+                pass
 
-        print("Authentication credentials synced to master profile.")
+        if not silent:
+            print("Authentication credentials synced to master profile.")
 
     def shutdown(self) -> None:
         """Cleanly terminate all windows, stop daemon, and restore Hyprland borders."""
@@ -658,6 +667,11 @@ def main() -> None:
         action="store_true",
         help="Do not start the streamSilencer background focus daemon.",
     )
+    parser.add_argument(
+        "--no-sync",
+        action="store_true",
+        help="Do not automatically sync cookies and logins from personal profile on launch.",
+    )
 
     args = parser.parse_args()
 
@@ -669,6 +683,10 @@ def main() -> None:
         profile=args.profile,
         start_daemon=(not args.no_daemon),
     )
+
+    # Automatically sync latest authentication and cookies from personal profile
+    if not args.no_sync:
+        manager.sync_credentials(silent=False)
 
     # Setup signal handlers for graceful teardown on SIGINT, SIGTERM, SIGHUP
     def handle_signal(signum, frame):
