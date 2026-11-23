@@ -106,8 +106,11 @@ def launch_windows(
         ]
 
         print(f"  Window {i + 1}: {' '.join(cmd)}")
+        env = os.environ.copy()
+        env["PULSE_PROP"] = f"application.name={profile} application.id={profile} media.software={profile}"
         subprocess.Popen(
             cmd,
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
@@ -124,7 +127,9 @@ def edit_master_profile(profile: str = "streamSilencer") -> None:
     print(f"Profile directory: {base_dir}")
     print("Make your changes, then close the browser. Future stream windows will duplicate these settings.")
     cmd = ["firefox", "--name", profile, "--profile", base_dir, "--new-instance"]
-    subprocess.call(cmd)
+    env = os.environ.copy()
+    env["PULSE_PROP"] = f"application.name={profile} application.id={profile} media.software={profile}"
+    subprocess.call(cmd, env=env)
 
 
 def main() -> None:

@@ -311,6 +311,10 @@ class StreamSilencer:
             associated_win = stream_map.get(node_id)
 
             if not associated_win:
+                # Protect unmanaged Firefox streams (e.g. personal profiles) against WirePlumber crosstalk
+                if stream.get("app_name") == "Firefox" and is_stream_muted(node_id):
+                    logger.info("Restoring unmanaged Firefox stream (node %d) unmuted state", node_id)
+                    set_stream_mute(node_id, mute=False, dry_run=self.dry_run)
                 continue
 
             win_addr = associated_win.get("address")
