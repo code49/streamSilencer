@@ -147,6 +147,29 @@ def set_stream_mute(node_id: int, mute: bool, dry_run: bool = False) -> None:
         logger.error("Failed to %s node %d: %s", action, node_id, exc)
 
 
+def set_window_border(address: str, muted: bool, color: str = "rgb(ffadad)", dry_run: bool = False) -> None:
+    """Highlight a muted window border with red in Hyprland."""
+    if not address:
+        return
+    val = color if muted else "-1"
+    if dry_run:
+        logger.info("[DRY-RUN] Set border for %s -> %s", address, val)
+        return
+
+    code = f"""
+    for _, w in ipairs(hl.get_windows()) do
+        if w.address == '{address}' then
+            hl.dispatch(hl.dsp.window.set_prop({{ window = w, prop = 'inactivebordercolor', val = '{val}' }}))
+            break
+        end
+    end
+    """
+    try:
+        subprocess.run(["hyprctl", "eval", code], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as exc:
+        logger.debug("Failed to set window border for %s: %s", address, exc)
+
+
 class StreamSilencer:
     """Coordinates Hyprland focus with PipeWire stream mute states."""
 
@@ -155,13 +178,33 @@ class StreamSilencer:
         class_filter: str = "streamSilencer",
         title_filter: str = "",
         mute_on_unfocus: bool = False,
+        highlight_muted: bool = True,
+        border_color: str = "rgb(ffadad)",
         dry_run: bool = False,
     ):
         self.class_filter = class_filter.lower()
         self.title_filter = title_filter.lower()
         self.mute_on_unfocus = mute_on_unfocus
+        self.highlight_muted = highlight_muted
+        self.border_color = border_color
         self.dry_run = dry_run
         self.last_active_address: Optional[str] = None
+        self.window_mute_states: Dict[str, bool] = {}
+
+    def update_window_border(self, address: str, muted: bool) -> None:
+        """Update window border highlight with state caching."""
+        if not self.highlight_muted or not address:
+            return
+        if self.window_mute_states.get(address) == muted:
+            return
+        self.window_mute_states[address] = muted
+        set_window_border(address, muted=muted, color=self.border_color, dry_run=self.dry_run)
+
+    def clear_all_borders(self) -> None:
+        """Reset all managed window borders back to default."""
+        for addr in list(self.window_mute_states.keys()):
+            set_window_border(addr, muted=False, dry_run=self.dry_run)
+        self.window_mute_states.clear()
 
     def window_matches(self, win: Dict) -> bool:
         """Check if a Hyprland window matches the target criteria."""
@@ -229,16 +272,24 @@ class StreamSilencer:
             if not associated_win:
                 continue
 
+            win_addr = associated_win.get("address")
+
             # If focused window matches this stream's window: unmute
-            if is_active_managed and associated_win.get("address") == active_address:
+            if is_active_managed and win_addr == active_address:
                 set_stream_mute(node_id, mute=False, dry_run=self.dry_run)
+                if win_addr:
+                    self.update_window_border(win_addr, muted=False)
             else:
                 # If active window is another managed window, mute this stream
                 if is_active_managed:
                     set_stream_mute(node_id, mute=True, dry_run=self.dry_run)
+                    if win_addr:
+                        self.update_window_border(win_addr, muted=True)
                 elif self.mute_on_unfocus:
                     # Active window is outside managed set, mute if configured
                     set_stream_mute(node_id, mute=True, dry_run=self.dry_run)
+                    if win_addr:
+                        self.update_window_border(win_addr, muted=True)
 
     def print_status(self) -> None:
         """Print diagnostics of windows and streams."""
@@ -290,6 +341,7 @@ class StreamSilencer:
 
         def shutdown_handler(signum, frame):
             logger.info("Received signal %d, stopping daemon...", signum)
+            self.clear_all_borders()
             sock.close()
             sys.exit(0)
 
@@ -376,6 +428,16 @@ def main() -> None:
         help="Mute all managed streams when focus moves to an unmanaged window.",
     )
     parser.add_argument(
+        "--no-border-highlight",
+        action="store_true",
+        help="Disable red border highlight on muted windows.",
+    )
+    parser.add_argument(
+        "--border-color",
+        default="rgb(ffadad)",
+        help="Border color for muted windows (default: 'rgb(ffadad)').",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Log actions without modifying PipeWire mute states.",
@@ -396,6 +458,8 @@ def main() -> None:
         class_filter=args.class_filter,
         title_filter=args.title_filter,
         mute_on_unfocus=args.mute_on_unfocus_all,
+        highlight_muted=(not args.no_border_highlight),
+        border_color=args.border_color,
         dry_run=args.dry_run,
     )
 
