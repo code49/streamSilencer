@@ -16,8 +16,9 @@ pkgs.mkShell {
     echo "========================================================="
     echo "Python: $(python --version)"
     echo ""
-    echo "Run 'python stream_silencer.py --help' to view options."
+    echo "Run 'python stream_launcher.py' to start the interactive session view."
     echo "Run 'python stream_silencer.py --status' to inspect streams."
+    echo "Run 'python stream_silencer.py --help' to view daemon options."
     echo "========================================================="
   '';
 }
