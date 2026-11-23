@@ -2,9 +2,9 @@
 """
 stream_launcher.py: Multi-window stream session launcher for streamSilencer.
 
-Launches X number of stream-compatible Firefox windows configured with the
-streamSilencer profile and Wayland app_id/class. Automatically applies
-pseudo-fullscreen in Hyprland and coordinates with streamSilencer for focus muting.
+Launches X stream-compatible Firefox windows duplicated directly from the master
+streamSilencer profile. Automatically applies pseudo-fullscreen in Hyprland and
+coordinates with streamSilencer for focus-based muting.
 """
 
 import argparse
@@ -21,12 +21,11 @@ def find_firefox_profile_dir(profile_name: str) -> str:
     mozilla_dir = os.path.expanduser("~/.mozilla/firefox")
     profiles_ini = os.path.join(mozilla_dir, "profiles.ini")
     if not os.path.exists(profiles_ini):
-        return ""
+        return os.path.join(mozilla_dir, profile_name)
 
     with open(profiles_ini, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Simple section parse
     sections = content.split("[Profile")
     for sec in sections[1:]:
         lines = sec.splitlines()
@@ -46,51 +45,23 @@ def find_firefox_profile_dir(profile_name: str) -> str:
             if is_rel:
                 return os.path.join(mozilla_dir, p_path)
             return p_path
-    return ""
+    return os.path.join(mozilla_dir, profile_name)
 
 
-def sync_theme_and_extensions(sessions_base: str, count: int) -> None:
-    """Propagate active theme and installed extensions from inst_1 to all other instances."""
-    inst_1 = os.path.join(sessions_base, "inst_1")
-    if not os.path.exists(inst_1):
-        return
-
-    active_theme = None
-    inst_1_prefs = os.path.join(inst_1, "prefs.js")
-    if os.path.exists(inst_1_prefs):
-        with open(inst_1_prefs, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                if "extensions.activeThemeID" in line:
-                    active_theme = line.strip()
-                    break
-
-    for i in range(1, count):
-        target_inst = os.path.join(sessions_base, f"inst_{i + 1}")
-        if not os.path.exists(target_inst):
+def duplicate_base_profile(base_dir: str, target_dir: str) -> None:
+    """Duplicate base profile directly into an isolated runtime instance."""
+    exclude = {".parentlock", "lock"}
+    os.makedirs(target_dir, exist_ok=True)
+    for item in os.listdir(base_dir):
+        if item in exclude:
             continue
-
-        if active_theme:
-            user_js = os.path.join(target_inst, "user.js")
-            lines = []
-            if os.path.exists(user_js):
-                try:
-                    os.chmod(user_js, 0o644)
-                    with open(user_js, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = [l for l in f if "extensions.activeThemeID" not in l]
-                except Exception:
-                    pass
-            lines.append(f"{active_theme}\n")
+        s = os.path.join(base_dir, item)
+        d = os.path.join(target_dir, item)
+        if os.path.isdir(s):
+            shutil.copytree(s, d, dirs_exist_ok=True)
+        else:
             try:
-                with open(user_js, "w", encoding="utf-8") as f:
-                    f.writelines(lines)
-            except Exception:
-                pass
-
-        src_ext = os.path.join(inst_1, "extensions")
-        dst_ext = os.path.join(target_inst, "extensions")
-        if os.path.exists(src_ext) and not os.path.exists(dst_ext):
-            try:
-                shutil.copytree(src_ext, dst_ext, dirs_exist_ok=True)
+                shutil.copy2(s, d)
             except Exception:
                 pass
 
@@ -99,11 +70,8 @@ def launch_windows(
     count: int,
     urls: List[str],
     profile: str = "streamSilencer",
-    isolated: bool = False,
-    reset_sessions: bool = False,
 ) -> None:
-    """Launch count windows with the streamSilencer profile."""
-    # Ensure default URL if not provided
+    """Launch count windows, each duplicated directly from the master profile."""
     target_urls = []
     for i in range(count):
         if i < len(urls):
@@ -112,82 +80,28 @@ def launch_windows(
             target_urls.append("about:blank")
 
     base_profile_dir = find_firefox_profile_dir(profile)
-    if not base_profile_dir:
-        base_profile_dir = os.path.expanduser(f"~/.mozilla/firefox/{profile}")
+    if not os.path.exists(base_profile_dir):
         os.makedirs(base_profile_dir, exist_ok=True)
-        user_js = os.path.join(base_profile_dir, "user.js")
-        if not os.path.exists(user_js):
-            with open(user_js, "w", encoding="utf-8") as f:
-                f.write('user_pref("services.sync.engine.addons", false);\n')
 
     sessions_base = os.path.expanduser(f"~/.mozilla/firefox/{profile}_sessions")
     os.makedirs(sessions_base, exist_ok=True)
 
-    print(f"Launching {count} stream window(s)...")
-
-    if isolated:
-        sync_theme_and_extensions(sessions_base, count)
+    print(f"Duplicating '{profile}' and launching {count} stream window(s)...")
 
     for i in range(count):
         url = target_urls[i]
-        cmd = ["firefox", "--name", profile]
+        inst_dir = os.path.join(sessions_base, f"inst_{i + 1}")
 
-        if isolated:
-            # Dedicated persistent session instance to guarantee separate PIDs for PipeWire
-            inst_dir = os.path.join(sessions_base, f"inst_{i + 1}")
-            if reset_sessions and os.path.exists(inst_dir):
-                shutil.rmtree(inst_dir)
-            is_new = not os.path.exists(inst_dir)
-            os.makedirs(inst_dir, exist_ok=True)
-            if is_new and base_profile_dir and os.path.exists(base_profile_dir):
-                # Initial seed of core auth, cookies, and preferences
-                for item in [
-                    "prefs.js", "user.js", "cookies.sqlite", "cookies.sqlite-wal",
-                    "logins.json", "logins.db", "key4.db", "cert9.db", "storage.sqlite"
-                ]:
-                    src = os.path.join(base_profile_dir, item)
-                    if os.path.exists(src):
-                        shutil.copy2(src, os.path.join(inst_dir, item))
-                # Copy storage directory for local web sessions
-                src_storage = os.path.join(base_profile_dir, "storage")
-                dst_storage = os.path.join(inst_dir, "storage")
-                if os.path.exists(src_storage) and not os.path.exists(dst_storage):
-                    try:
-                        shutil.copytree(src_storage, dst_storage)
-                    except Exception:
-                        pass
+        # Duplicate directly from the master streamSilencer profile
+        duplicate_base_profile(base_profile_dir, inst_dir)
 
-                # Copy Widevine and media plugins for DRM (YouTube TV, sports streams)
-                for gmp in ["gmp", "gmp-gmpopenh264", "gmp-widevinecdm"]:
-                    src_gmp = os.path.join(base_profile_dir, gmp)
-                    if not os.path.exists(src_gmp):
-                        fallback_gmp = os.path.expanduser(f"~/.mozilla/firefox/dchan-personal/{gmp}")
-                        if os.path.exists(fallback_gmp):
-                            src_gmp = fallback_gmp
-                    dst_gmp = os.path.join(inst_dir, gmp)
-                    if os.path.exists(src_gmp) and not os.path.exists(dst_gmp):
-                        try:
-                            shutil.copytree(src_gmp, dst_gmp)
-                        except Exception:
-                            pass
-
-                # Ensure EME / Widevine preferences are set in instance user.js
-                inst_user_js = os.path.join(inst_dir, "user.js")
-                if os.path.exists(inst_user_js):
-                    try:
-                        os.chmod(inst_user_js, 0o644)
-                        with open(inst_user_js, "a", encoding="utf-8") as f:
-                            f.write('\nuser_pref("media.eme.enabled", true);\nuser_pref("media.gmp-widevinecdm.enabled", true);\nuser_pref("media.gmp-widevinecdm.visible", true);\n')
-                    except Exception:
-                        pass
-
-            cmd.extend(["--profile", inst_dir, "--new-instance", url])
-        else:
-            # Use direct directory path to bypass profiles.ini
-            if i == 0:
-                cmd.extend(["--profile", base_profile_dir, url])
-            else:
-                cmd.extend(["--profile", base_profile_dir, "-new-window", url])
+        cmd = [
+            "firefox",
+            "--name", profile,
+            "--profile", inst_dir,
+            "--new-instance",
+            url,
+        ]
 
         print(f"  Window {i + 1}: {' '.join(cmd)}")
         subprocess.Popen(
@@ -196,15 +110,24 @@ def launch_windows(
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
-        # Brief pause to allow Wayland compositor to map window cleanly
         time.sleep(0.5)
 
     print("All stream windows launched.")
 
 
+def edit_master_profile(profile: str = "streamSilencer") -> None:
+    """Launch the master profile directly to configure themes, logins, or extensions."""
+    base_dir = find_firefox_profile_dir(profile)
+    print(f"Opening master '{profile}' profile for configuration...")
+    print(f"Profile directory: {base_dir}")
+    print("Make your changes, then close the browser. Future stream windows will duplicate these settings.")
+    cmd = ["firefox", "--name", profile, "--profile", base_dir, "--new-instance"]
+    subprocess.call(cmd)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Launch X stream-compatible Firefox windows with streamSilencer."
+        description="Launch X stream-compatible Firefox windows duplicated from streamSilencer."
     )
     parser.add_argument(
         "-n",
@@ -221,17 +144,12 @@ def main() -> None:
     parser.add_argument(
         "--profile",
         default="streamSilencer",
-        help="Firefox profile name to launch (default: 'streamSilencer').",
+        help="Firefox profile name to duplicate (default: 'streamSilencer').",
     )
     parser.add_argument(
-        "--shared-profile",
+        "--edit",
         action="store_true",
-        help="Use a single shared Firefox instance instead of isolated instances.",
-    )
-    parser.add_argument(
-        "--reset-sessions",
-        action="store_true",
-        help="Clear existing session profile data and re-seed from base profile.",
+        help="Open the master profile directly to configure themes, extensions, or logins.",
     )
     parser.add_argument(
         "--no-daemon",
@@ -240,6 +158,10 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    if args.edit:
+        edit_master_profile(args.profile)
+        return
 
     # Automatically manage focus daemon unless opted out
     if not args.no_daemon:
@@ -253,14 +175,11 @@ def main() -> None:
             start_new_session=True,
         )
 
-    # Determine window count
     count = max(args.count, len(args.urls))
     launch_windows(
         count=count,
         urls=args.urls,
         profile=args.profile,
-        isolated=(not args.shared_profile),
-        reset_sessions=args.reset_sessions,
     )
 
 
