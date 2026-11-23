@@ -159,13 +159,16 @@ def set_window_border(address: str, muted: bool, color: str = "rgb(ffadad)", dry
     code = f"""
     for _, w in ipairs(hl.get_windows()) do
         if w.address == '{address}' then
-            hl.dispatch(hl.dsp.window.set_prop({{ window = w, prop = 'inactivebordercolor', val = '{val}' }}))
+            hl.dispatch(hl.dsp.window.set_prop({{ window = w, prop = 'inactive_border_color', value = '{val}' }}))
+            hl.dispatch(hl.dsp.window.set_prop({{ window = w, prop = 'active_border_color', value = '{val}' }}))
             break
         end
     end
     """
     try:
-        subprocess.run(["hyprctl", "eval", code], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        res = subprocess.run(["hyprctl", "eval", code], capture_output=True, text=True)
+        if res.returncode != 0:
+            logger.debug("hyprctl eval error: %s", res.stderr.strip())
     except Exception as exc:
         logger.debug("Failed to set window border for %s: %s", address, exc)
 
@@ -265,6 +268,7 @@ class StreamSilencer:
         active_address = active_win.get("address")
         is_active_managed = self.window_matches(active_win)
 
+        # Update PipeWire audio streams
         for stream in streams:
             node_id = stream["id"]
             associated_win = stream_map.get(node_id)
@@ -277,19 +281,39 @@ class StreamSilencer:
             # If focused window matches this stream's window: unmute
             if is_active_managed and win_addr == active_address:
                 set_stream_mute(node_id, mute=False, dry_run=self.dry_run)
-                if win_addr:
-                    self.update_window_border(win_addr, muted=False)
             else:
-                # If active window is another managed window, mute this stream
-                if is_active_managed:
+                # If active window is another managed window, or mute_on_unfocus is set
+                if is_active_managed or self.mute_on_unfocus:
                     set_stream_mute(node_id, mute=True, dry_run=self.dry_run)
-                    if win_addr:
-                        self.update_window_border(win_addr, muted=True)
-                elif self.mute_on_unfocus:
-                    # Active window is outside managed set, mute if configured
-                    set_stream_mute(node_id, mute=True, dry_run=self.dry_run)
-                    if win_addr:
-                        self.update_window_border(win_addr, muted=True)
+
+        # Update window border highlights for all managed windows
+        if is_active_managed:
+            self.last_active_address = active_address
+            for win in managed_windows:
+                win_addr = win.get("address")
+                if not win_addr:
+                    continue
+                is_active = (win_addr == active_address)
+                self.update_window_border(win_addr, muted=(not is_active))
+        elif self.mute_on_unfocus:
+            for win in managed_windows:
+                win_addr = win.get("address")
+                if win_addr:
+                    self.update_window_border(win_addr, muted=True)
+        else:
+            # Focus moved outside managed windows; preserve last active window's unmuted state
+            for win in managed_windows:
+                win_addr = win.get("address")
+                if not win_addr:
+                    continue
+                is_last_active = (win_addr == self.last_active_address)
+                self.update_window_border(win_addr, muted=(not is_last_active))
+
+        # Clean up stale addresses from mute state cache
+        active_addrs = {w.get("address") for w in managed_windows}
+        for addr in list(self.window_mute_states.keys()):
+            if addr not in active_addrs:
+                del self.window_mute_states[addr]
 
     def print_status(self) -> None:
         """Print diagnostics of windows and streams."""
